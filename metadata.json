@@ -1,0 +1,6 @@
+{
+  "name": "Smart Expense Splitter",
+  "description": "Smart receipt splitting application that automatically extracts items and calculates bill shares.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

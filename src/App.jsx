@@ -3,16 +3,23 @@ import { createWorker } from "tesseract.js";
 import "./App.css";
 
 const PERSON_COLORS = [
-  "#4F46E5", // Indigo
+  "#4F46E5", // Indigo (You)
   "#9333EA", // Purple
   "#EA580C", // Orange
-  "#0891B2", // Cyan
+  "#0D9488", // Teal
   "#DB2777", // Pink
+  "#2563EB", // Blue
+  "#D97706", // Amber
   "#16A34A", // Green
 ];
 
 function formatMoney(value) {
   return Number(value || 0).toFixed(2);
+}
+
+function getPersonInitial(name) {
+  if (!name) return "?";
+  return name.trim().charAt(0).toUpperCase();
 }
 
 function App() {
@@ -29,6 +36,7 @@ function App() {
   const [subtotal, setSubtotal] = useState(null);
   const [tax, setTax] = useState(null);
   const [receiptTotal, setReceiptTotal] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   // =============================
   // PERSON COLOR
@@ -50,7 +58,7 @@ function App() {
 
   const currentStep = splitResult
     ? 3
-    : receipt
+    : receipt && !loading && items.length > 0
       ? 2
       : 1;
 
@@ -197,7 +205,7 @@ function App() {
       if (worker) {
         try {
           await worker.terminate();
-        } catch (error) {
+        } catch {
           console.log("OCR worker already stopped.");
         }
       }
@@ -390,6 +398,7 @@ function App() {
     setLoading(false);
     setPeople(["You"]);
     setNewPerson("");
+    setCopied(false);
   };
 
   // =============================
@@ -400,13 +409,11 @@ function App() {
     if (!splitResult) return;
 
     const lines = [
-      "Bill Split — Your Receipt",
-      "",
+      "Bill Split",
       ...Object.entries(splitResult).map(
         ([person, amount]) =>
           `${person}: $${formatMoney(amount)}`
       ),
-      "",
       `Total: $${formatMoney(
         Object.values(splitResult).reduce(
           (total, amount) => total + amount,
@@ -418,8 +425,21 @@ function App() {
     const summary = lines.join("\n");
 
     try {
-      await navigator.clipboard.writeText(summary);
-      alert("Summary copied to clipboard!");
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(summary);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = summary;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
     } catch (error) {
       console.error("Copy failed:", error);
       alert("Unable to copy summary.");
@@ -490,17 +510,15 @@ function App() {
           <span>in Seconds.</span>
         </h1>
 
-        <p>
-          Upload a receipt and let SmartSplit
-          automatically extract items and
-          calculate everyone's share.
+        <p className="hero-description">
+          Upload a receipt and let SmartSplit automatically extract items and calculate everyone's fair share.
         </p>
 
         {/* =============================
-            PROGRESS
+            PROGRESS INDICATOR
         ============================= */}
 
-        <div className="progress-container">
+        <div className="progress-container" aria-label="Step Progress">
 
           {[
             {
@@ -517,11 +535,8 @@ function App() {
             },
           ].map((step, index) => {
 
-            const completed =
-              currentStep > step.number;
-
-            const active =
-              currentStep === step.number;
+            const completed = currentStep > step.number;
+            const active = currentStep === step.number;
 
             return (
               <div
@@ -542,7 +557,7 @@ function App() {
                       : step.number}
                   </div>
 
-                  <span>
+                  <span className="progress-label">
                     {step.label}
                   </span>
                 </div>
@@ -550,7 +565,7 @@ function App() {
                 {index < 2 && (
                   <div
                     className={`progress-line ${
-                      completed
+                      currentStep > step.number
                         ? "completed"
                         : ""
                     }`}
@@ -568,10 +583,10 @@ function App() {
         ============================= */}
 
         {!receipt && (
-          <>
+          <div className="upload-container">
             <label className="upload-button">
-              <span>📸</span>
-              Upload Receipt
+              <span className="upload-icon">📸</span>
+              <span>Upload Receipt</span>
 
               <input
                 type="file"
@@ -582,9 +597,9 @@ function App() {
             </label>
 
             <div className="file-types">
-              JPG, PNG or WebP
+              Supports JPG, PNG or WebP images
             </div>
-          </>
+          </div>
         )}
 
         {/* =============================
@@ -597,11 +612,11 @@ function App() {
             <div className="preview-header">
               <div>
                 <span className="section-kicker">
-                  RECEIPT
+                  RECEIPT PREVIEW
                 </span>
 
                 <h2>
-                  Receipt Preview
+                  Uploaded Receipt
                 </h2>
               </div>
 
@@ -609,16 +624,19 @@ function App() {
                 <button
                   className="new-receipt-button"
                   onClick={resetApp}
+                  title="Reset and upload a new receipt"
                 >
                   🔄 New Receipt
                 </button>
               )}
             </div>
 
-            <img
-              src={receipt}
-              alt="Uploaded receipt"
-            />
+            <div className="receipt-image-wrapper">
+              <img
+                src={receipt}
+                alt="Uploaded receipt"
+              />
+            </div>
 
             {/* =============================
                 LOADING
@@ -626,32 +644,79 @@ function App() {
 
             {loading && (
               <div className="loading-card">
-
-                <div className="loading-icon">
-                  ✦
+                <div className="loading-scanner">
+                  <div className="scanner-line" />
+                  <span className="receipt-doc-icon">🧾</span>
                 </div>
 
                 <div className="loading-content">
-
                   <h3>
                     Analyzing your receipt...
                   </h3>
 
                   <p>
-                    Extracting items, prices and
-                    billing information
+                    Extracting items and prices
                   </p>
 
-                  <div className="skeleton-line" />
-                  <div className="skeleton-line short" />
-
+                  <div className="skeleton-container">
+                    <div className="skeleton-line" />
+                    <div className="skeleton-line medium" />
+                    <div className="skeleton-line short" />
+                  </div>
                 </div>
-
               </div>
             )}
 
             {!loading && items.length > 0 && (
               <>
+
+                {/* =============================
+                    BILL SUMMARY
+                ============================= */}
+
+                {(subtotal !== null ||
+                  tax !== null ||
+                  receiptTotal !== null) && (
+
+                  <section className="zone summary-zone">
+
+                    <div className="section-title">
+                      <div>
+                        <span className="section-kicker">
+                          PAYMENT DETAILS
+                        </span>
+
+                        <h2>
+                          🧾 Bill Summary
+                        </h2>
+                      </div>
+                    </div>
+
+                    <div className="summary-card-inner">
+                      {subtotal !== null && (
+                        <div className="summary-row">
+                          <span className="summary-label">Subtotal</span>
+                          <strong className="summary-val">${formatMoney(subtotal)}</strong>
+                        </div>
+                      )}
+
+                      {tax !== null && (
+                        <div className="summary-row">
+                          <span className="summary-label">Tax</span>
+                          <strong className="summary-val">${formatMoney(tax)}</strong>
+                        </div>
+                      )}
+
+                      {receiptTotal !== null && (
+                        <div className="summary-total">
+                          <span className="total-label">Receipt Total</span>
+                          <strong className="total-val">${formatMoney(receiptTotal)}</strong>
+                        </div>
+                      )}
+                    </div>
+
+                  </section>
+                )}
 
                 {/* =============================
                     EXTRACTED ITEMS
@@ -666,12 +731,12 @@ function App() {
                       </span>
 
                       <h2>
-                        🧾 Extracted Items
+                        📋 Extracted Items
                       </h2>
                     </div>
 
                     <span className="item-count">
-                      {items.length} items
+                      {items.length} {items.length === 1 ? "item" : "items"}
                     </span>
                   </div>
 
@@ -690,12 +755,12 @@ function App() {
                               ).padStart(2, "0")}
                             </span>
 
-                            <span>
+                            <span className="item-name">
                               {item.name}
                             </span>
                           </div>
 
-                          <strong>
+                          <strong className="item-price">
                             ${formatMoney(
                               item.price
                             )}
@@ -719,69 +784,6 @@ function App() {
                 </section>
 
                 {/* =============================
-                    BILL SUMMARY
-                ============================= */}
-
-                {(subtotal !== null ||
-                  tax !== null ||
-                  receiptTotal !== null) && (
-
-                  <section className="zone summary-zone">
-
-                    <div className="section-title">
-                      <div>
-                        <span className="section-kicker">
-                          PAYMENT
-                        </span>
-
-                        <h2>
-                          🧾 Bill Summary
-                        </h2>
-                      </div>
-                    </div>
-
-                    {subtotal !== null && (
-                      <div className="summary-row">
-                        <span>
-                          Subtotal
-                        </span>
-
-                        <strong>
-                          ${formatMoney(subtotal)}
-                        </strong>
-                      </div>
-                    )}
-
-                    {tax !== null && (
-                      <div className="summary-row">
-                        <span>
-                          Tax
-                        </span>
-
-                        <strong>
-                          ${formatMoney(tax)}
-                        </strong>
-                      </div>
-                    )}
-
-                    {receiptTotal !== null && (
-                      <div className="summary-total">
-                        <span>
-                          Receipt Total
-                        </span>
-
-                        <strong>
-                          ${formatMoney(
-                            receiptTotal
-                          )}
-                        </strong>
-                      </div>
-                    )}
-
-                  </section>
-                )}
-
-                {/* =============================
                     PEOPLE
                 ============================= */}
 
@@ -802,37 +804,47 @@ function App() {
                   <div className="people-list">
 
                     {people.map(
-                      (person, index) => {
+                      (person) => {
 
                         const color =
                           getPersonColor(
                             person
                           );
 
+                        const initial =
+                          getPersonInitial(
+                            person
+                          );
+
                         return (
                           <div
-                            className="person"
+                            className="person-chip"
                             key={person}
                             style={{
                               "--person-color":
                                 color,
                             }}
                           >
-                            <span className="person-dot" />
+                            <span className="person-chip-avatar">
+                              {initial}
+                            </span>
 
-                            <span>
+                            <span className="person-chip-name">
                               {person}
                             </span>
 
                             {person !== "You" && (
                               <button
+                                className="person-remove-btn"
                                 onClick={() =>
                                   removePerson(
                                     person
                                   )
                                 }
+                                title={`Remove ${person}`}
+                                aria-label={`Remove ${person}`}
                               >
-                                Remove
+                                ✕
                               </button>
                             )}
                           </div>
@@ -846,7 +858,7 @@ function App() {
 
                     <input
                       type="text"
-                      placeholder="Enter person's name"
+                      placeholder="Enter friend's name..."
                       value={newPerson}
                       onChange={(event) =>
                         setNewPerson(
@@ -863,6 +875,7 @@ function App() {
                     />
 
                     <button
+                      className="add-person-btn"
                       onClick={addPerson}
                     >
                       + Add Person
@@ -890,7 +903,7 @@ function App() {
                     </div>
                   </div>
 
-                  {/* WARNING */}
+                  {/* UNASSIGNED WARNING */}
 
                   {unassignedItems.length > 0 && (
                     <div className="warning-banner">
@@ -899,171 +912,178 @@ function App() {
                         ⚠️
                       </span>
 
-                      <div>
+                      <div className="warning-content">
                         <strong>
-                          Some items need attention
+                          {unassignedItems.length === 1 ? "Unassigned Item" : "Unassigned Items"}
                         </strong>
 
                         <p>
-                          {unassignedItems
-                            .map(
-                              (item) =>
-                                `${item.name} has no one assigned`
-                            )
-                            .join(
-                              " • "
-                            )}
-                          {" — the total won't be accurate."}
+                          {unassignedItems.length === 1
+                            ? `${unassignedItems[0].name} has no one assigned — the total won't be accurate.`
+                            : `${unassignedItems.map((item) => item.name).join(", ")} have no one assigned — the total won't be accurate.`}
                         </p>
                       </div>
 
                     </div>
                   )}
 
-                  {items.map(
-                    (item, index) => {
+                  <div className="assignments-list">
+                    {items.map(
+                      (item, index) => {
 
-                      const assignedPeople =
-                        assignments[index] ||
-                        [];
+                        const assignedPeople =
+                          assignments[index] ||
+                          [];
 
-                      return (
-                        <div
-                          className={`assignment-card ${
-                            assignedPeople.length === 0
-                              ? "unassigned"
-                              : ""
-                          }`}
-                          key={index}
-                        >
+                        const isUnassigned = assignedPeople.length === 0;
 
-                          <div className="assignment-header">
+                        return (
+                          <div
+                            className={`assignment-card ${
+                              isUnassigned
+                                ? "unassigned"
+                                : ""
+                            }`}
+                            key={index}
+                          >
 
-                            <div>
-                              <strong>
-                                {item.name}
-                              </strong>
+                            <div className="assignment-header">
 
-                              <span>
-                                ${formatMoney(
-                                  item.price
-                                )}
-                              </span>
+                              <div className="assignment-item-main">
+                                <span className="assignment-item-name">
+                                  {item.name}
+                                </span>
+
+                                <span className="assignment-item-price">
+                                  ${formatMoney(
+                                    item.price
+                                  )}
+                                </span>
+                              </div>
+
+                              {isUnassigned && (
+                                <span className="needs-assignment">
+                                  Needs assignment
+                                </span>
+                              )}
+
                             </div>
 
-                            {assignedPeople.length === 0 && (
-                              <span className="needs-assignment">
-                                Needs assignment
-                              </span>
-                            )}
+                            <div className="person-checkboxes">
 
-                          </div>
+                              {people.map(
+                                (person) => {
 
-                          <div className="person-checkboxes">
+                                  const color =
+                                    getPersonColor(
+                                      person
+                                    );
 
-                            {people.map(
-                              (person) => {
+                                  const initial =
+                                    getPersonInitial(
+                                      person
+                                    );
 
-                                const color =
-                                  getPersonColor(
-                                    person
-                                  );
+                                  const selected =
+                                    assignedPeople.includes(
+                                      person
+                                    );
 
-                                const selected =
-                                  assignedPeople.includes(
-                                    person
-                                  );
-
-                                return (
-                                  <label
-                                    className={`person-checkbox ${
-                                      selected
-                                        ? "selected"
-                                        : ""
-                                    }`}
-                                    key={person}
-                                    style={{
-                                      "--person-color":
-                                        color,
-                                    }}
-                                  >
-
-                                    <input
-                                      type="checkbox"
-                                      checked={
+                                  return (
+                                    <label
+                                      className={`person-checkbox ${
                                         selected
-                                      }
-                                      onChange={() =>
-                                        togglePersonForItem(
-                                          index,
-                                          person
-                                        )
-                                      }
-                                    />
+                                          ? "selected"
+                                          : ""
+                                      }`}
+                                      key={person}
+                                      style={{
+                                        "--person-color":
+                                          color,
+                                      }}
+                                    >
 
-                                    <span className="custom-checkbox">
-                                      {selected
-                                        ? "✓"
-                                        : ""}
-                                    </span>
+                                      <input
+                                        type="checkbox"
+                                        checked={
+                                          selected
+                                        }
+                                        onChange={() =>
+                                          togglePersonForItem(
+                                            index,
+                                            person
+                                          )
+                                        }
+                                      />
 
-                                    <span>
-                                      {person}
-                                    </span>
+                                      <span className="custom-checkbox">
+                                        {selected
+                                          ? "✓"
+                                          : ""}
+                                      </span>
 
-                                  </label>
-                                );
-                              }
+                                      <span className="checkbox-avatar">
+                                        {initial}
+                                      </span>
+
+                                      <span className="checkbox-name">
+                                        {person}
+                                      </span>
+
+                                    </label>
+                                  );
+                                }
+                              )}
+
+                            </div>
+
+                            {assignedPeople.length > 0 && (
+                              <div className="share-info">
+
+                                💡 Shared by{" "}
+                                <strong>
+                                  {
+                                    assignedPeople.length
+                                  }
+                                </strong>{" "}
+                                {assignedPeople.length ===
+                                1
+                                  ? "person"
+                                  : "people"}
+
+                                {" → "}
+
+                                <strong className="share-amount">
+                                  $
+                                  {formatMoney(
+                                    item.price /
+                                      assignedPeople.length
+                                  )}
+                                </strong>
+
+                                {" each"}
+
+                              </div>
                             )}
 
                           </div>
-
-                          {assignedPeople.length > 0 && (
-                            <div className="share-info">
-
-                              💡 Shared by{" "}
-                              <strong>
-                                {
-                                  assignedPeople.length
-                                }
-                              </strong>{" "}
-                              {assignedPeople.length ===
-                              1
-                                ? "person"
-                                : "people"}
-
-                              {" → "}
-
-                              <strong>
-                                $
-                                {formatMoney(
-                                  item.price /
-                                    assignedPeople.length
-                                )}
-                              </strong>
-
-                              {" each"}
-
-                            </div>
-                          )}
-
-                        </div>
-                      );
-                    }
-                  )}
+                        );
+                      }
+                    )}
+                  </div>
 
                 </section>
 
                 {/* =============================
-                    CALCULATE
+                    CALCULATE BUTTON
                 ============================= */}
 
                 <button
                   className="calculate-button"
                   onClick={calculateSplit}
                 >
-                  Calculate My Split
-                  <span>→</span>
+                  <span>Calculate Split</span>
+                  <span className="arrow-icon">→</span>
                 </button>
 
                 {/* =============================
@@ -1077,24 +1097,23 @@ function App() {
 
                       <div>
                         <span className="section-kicker">
-                          ALL DONE
+                          STEP 3 · FINAL RESULTS
                         </span>
 
                         <h2>
-                          💰 Your Final Split
+                          💰 Final Split
                         </h2>
 
                         <p>
-                          Everyone's share is
-                          calculated.
+                          Everyone's share calculated with precision.
                         </p>
                       </div>
 
                       <button
-                        className="copy-button"
+                        className={`copy-button ${copied ? "copied" : ""}`}
                         onClick={copySummary}
                       >
-                        📋 Copy Summary
+                        {copied ? "✓ Summary Copied!" : "📋 Copy Summary"}
                       </button>
 
                     </div>
@@ -1114,10 +1133,9 @@ function App() {
                             );
 
                           const initial =
-                            person
-                              .trim()
-                              .charAt(0)
-                              .toUpperCase();
+                            getPersonInitial(
+                              person
+                            );
 
                           return (
                             <div
@@ -1137,17 +1155,17 @@ function App() {
 
                               <div className="result-person-info">
 
-                                <span>
+                                <span className="result-person-name">
                                   {person}
                                 </span>
 
-                                <small>
-                                  Your share
+                                <small className="result-person-label">
+                                  {person === "You" ? "Your share" : "Total owed"}
                                 </small>
 
                               </div>
 
-                              <strong>
+                              <strong className="result-person-amount">
                                 ${formatMoney(
                                   amount
                                 )}
@@ -1170,7 +1188,7 @@ function App() {
                         </h3>
 
                         <span>
-                          Who pays what
+                          Detailed cost assignment
                         </span>
                       </div>
 
@@ -1190,11 +1208,11 @@ function App() {
 
                               <div className="breakdown-item-header">
 
-                                <span>
+                                <span className="breakdown-item-name">
                                   {item.name}
                                 </span>
 
-                                <strong>
+                                <strong className="breakdown-item-price">
                                   ${formatMoney(
                                     item.price
                                   )}
@@ -1204,51 +1222,53 @@ function App() {
 
                               {assignedPeople.length >
                               0 ? (
-                                assignedPeople.map(
-                                  (person) => {
+                                <div className="breakdown-people-list">
+                                  {assignedPeople.map(
+                                    (person) => {
 
-                                    const share =
-                                      item.price /
-                                      assignedPeople.length;
+                                      const share =
+                                        item.price /
+                                        assignedPeople.length;
 
-                                    const color =
-                                      getPersonColor(
-                                        person
-                                      );
+                                      const color =
+                                        getPersonColor(
+                                          person
+                                        );
 
-                                    return (
-                                      <div
-                                        className="breakdown-person"
-                                        key={person}
-                                      >
+                                      return (
+                                        <div
+                                          className="breakdown-person"
+                                          key={person}
+                                        >
 
-                                        <div>
-                                          <span
-                                            className="breakdown-dot"
-                                            style={{
-                                              backgroundColor:
-                                                color,
-                                            }}
-                                          />
+                                          <div className="breakdown-person-left">
+                                            <span
+                                              className="breakdown-dot"
+                                              style={{
+                                                backgroundColor:
+                                                  color,
+                                              }}
+                                            />
 
-                                          <span>
-                                            {person}
-                                          </span>
+                                            <span className="breakdown-person-name" style={{ color: color }}>
+                                              👤 {person}
+                                            </span>
+                                          </div>
+
+                                          <strong className="breakdown-person-share">
+                                            $
+                                            {formatMoney(
+                                              share
+                                            )}
+                                          </strong>
+
                                         </div>
-
-                                        <strong>
-                                          $
-                                          {formatMoney(
-                                            share
-                                          )}
-                                        </strong>
-
-                                      </div>
-                                    );
-                                  }
-                                )
+                                      );
+                                    }
+                                  )}
+                                </div>
                               ) : (
-                                <div className="breakdown-person">
+                                <div className="breakdown-person unassigned-note">
                                   <span>
                                     ⚠️ Not assigned
                                   </span>
@@ -1270,11 +1290,11 @@ function App() {
 
                     <div className="result-total">
 
-                      <span>
-                        Total
+                      <span className="result-total-label">
+                        Total Split
                       </span>
 
-                      <strong>
+                      <strong className="result-total-value">
                         $
                         {formatMoney(
                           resultTotal
@@ -1285,7 +1305,7 @@ function App() {
 
                     {receiptTotal !== null && (
                       <div className="receipt-total-info">
-                        🧾 Receipt Total: $
+                        ✓ Matches Receipt Total: $
                         {formatMoney(
                           receiptTotal
                         )}
@@ -1303,15 +1323,14 @@ function App() {
             {!loading &&
               items.length === 0 && (
                 <div className="empty-state">
-                  <span>🧾</span>
+                  <span className="empty-icon">🧾</span>
 
                   <h3>
                     No items detected
                   </h3>
 
                   <p>
-                    Try uploading a clearer
-                    receipt.
+                    Try uploading a clearer, higher-resolution receipt.
                   </p>
                 </div>
               )}
